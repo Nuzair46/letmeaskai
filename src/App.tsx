@@ -21,8 +21,10 @@ function App() {
   const [copiedLink, setCopiedLink] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [showSendAnimation, setShowSendAnimation] = useState(false)
+  const [hasHandledInitialLoad, setHasHandledInitialLoad] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const typingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -32,30 +34,48 @@ function App() {
     scrollToBottom()
   }, [messages])
 
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (typingIntervalRef.current) {
+        clearInterval(typingIntervalRef.current)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     // Check for URL parameter on load
+    if (hasHandledInitialLoad) return
+    
     const urlParams = new URLSearchParams(window.location.search)
     const askParam = urlParams.get("ask")
 
     if (askParam) {
       // Decode the parameter and start typing animation
       const decodedQuestion = decodeURIComponent(askParam.replace(/\+/g, " "))
+      setHasHandledInitialLoad(true)
       startTypingAnimation(decodedQuestion)
     }
-  }, [])
+  }, [hasHandledInitialLoad])
 
   const startTypingAnimation = (text: string) => {
     const messageId = Date.now().toString()
     setInputValue("")
 
+    // Clear any existing interval
+    if (typingIntervalRef.current) {
+      clearInterval(typingIntervalRef.current)
+    }
+
     // Type out the message character by character in the input field
     let currentIndex = 0
-    const typingInterval = setInterval(() => {
+    typingIntervalRef.current = setInterval(() => {
       if (currentIndex <= text.length) {
         setInputValue(text.slice(0, currentIndex))
         currentIndex++
       } else {
-        clearInterval(typingInterval)
+        clearInterval(typingIntervalRef.current!)
+        typingIntervalRef.current = null
         // After typing is done, trigger send animation
         setTimeout(() => {
           setShowSendAnimation(true)
@@ -263,13 +283,14 @@ function App() {
               />
 
               <div className="input-icons-right">
-                <button type="button" className="input-icon">
+                <button type="button" className="input-icon" title="Voice input">
                   <Mic size={16} />
                 </button>
                 <button
                   type="submit"
                   className={`send-button ${inputValue.trim() ? "active" : ""} ${showSendAnimation ? "sending" : ""}`}
                   disabled={isGenerating && !inputValue.trim()}
+                  title="Send message"
                 >
                   <Send size={16} />
                 </button>
@@ -300,6 +321,8 @@ function App() {
                   value={`${window.location.origin}/?ask=${encodeURIComponent(selectedMessage.trim()).replace(/%20/g, "+")}`}
                   readOnly
                   className="link-input"
+                  title="Generated prank link"
+                  placeholder="Prank link will appear here"
                 />
                 <button className="copy-button" onClick={copyGeneratedLink}>
                   {copiedLink ? <Check size={16} /> : <Copy size={16} />}
